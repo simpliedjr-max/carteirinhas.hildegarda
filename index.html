@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema EMEF Hildegarda - Gestão Escolar</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @page { size: A4; margin: 3mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Arial', sans-serif; background: #525659; margin: 0; padding: 20px; }
+        
+        .no-print { 
+            max-width: 1000px; margin: 0 auto 20px auto; background: white; 
+            padding: 20px; border-radius: 8px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .admin-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: flex-end; }
+        .admin-box div { text-align: left; display: flex; flex-direction: column; }
+        .admin-box label { font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #333; }
+        .admin-box input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+        .admin-box .btn-add { background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; height: 35px; }
+
+        .container { 
+            width: 210mm; margin: auto; padding: 2mm; background: white; min-height: 297mm; 
+            display: flex; flex-wrap: wrap; gap: 0; justify-content: center; align-content: flex-start;
+        }
+
+        .divisor-turma { 
+            width: 100%; background: #0047ab; color: white; padding: 4px; 
+            margin: 5px 0; border-radius: 5px; font-size: 13px; font-weight: bold;
+            text-align: center; page-break-after: avoid;
+        }
+
+        .carteira-wrapper { 
+            display: flex; align-items: center; gap: 5px; 
+            margin-bottom: 0; page-break-inside: avoid; position: relative; 
+            border: 1px dashed #eee; padding: 5px; height: fit-content;
+        }
+
+        .carteira-dupla { display: flex; gap: 4mm; justify-content: center; position: relative; }
+        .carteira-dupla::after { content: ""; position: absolute; left: 50%; top: -1mm; bottom: -1mm; width: 1px; border-left: 1px dashed #bbb; z-index: 5; display: none; }
+
+        .face {
+            width: 95mm; height: 62mm;
+            border: 2px solid #0047ab; border-radius: 10px;
+            padding: 8px; background: white; position: relative; overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        /* FRENTE */
+        .topo { display: flex; align-items: center; margin-bottom: 2px; height: 11mm; }
+        .brasao { width: 11mm; height: 11mm; margin-right: 5px; object-fit: contain; flex-shrink: 0; }
+        .header-txt { font-size: 7px; font-weight: bold; flex: 1; border: 1.2px solid #000; border-radius: 10px; padding: 2px 5px; line-height: 1.1; }
+        .titulo-central { border: 1.2px solid #000; border-radius: 15px; width: fit-content; margin: 1px auto 3px; padding: 1px 18px; font-weight: bold; font-size: 9.5px; }
+        .corpo-frente { display: flex; gap: 5px; flex: 1; align-items: stretch; overflow: hidden; }
+        .dados-col { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+        .campo { position: relative; margin-top: 9px; border: 1.2px solid #000; border-radius: 6px; padding: 4px 5px 1px; font-size: 8.5px; font-weight: bold; }
+        .label { position: absolute; top: -7.5px; left: 50%; transform: translateX(-50%); background: white; border: 1.2px solid #000; border-radius: 8px; padding: 0 5px; font-size: 6.5px; white-space: nowrap; }
+        .centro { text-align: center; }
+        .obs-box { flex: 1; margin-top: 10px; margin-bottom: 1px; min-height: 30px; }
+
+        .linha-dados { display: flex; gap: 3px; width: 100%; }
+        .linha-dados .campo { flex: 1; }
+        .foto-box { 
+            width: 27mm; height: 36mm; border: 1.2px solid #000 !important; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; font-size: 8px; cursor: pointer; background: #f0f0f0; overflow: hidden; flex-shrink: 0; 
+            box-sizing: border-box; align-self: flex-start;
+        }
+        .foto-box img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* VERSO AJUSTADO */
+        .atencao-box { border: 1.2px solid #000; border-radius: 12px; padding: 6px; font-size: 7.8px; font-weight: bold; text-align: center; line-height: 1.2; margin-bottom: 5px; }
+        .assinaturas-v { flex: 1; display: flex; flex-direction: column; text-align: center; font-size: 7px; font-weight: bold; justify-content: center; }
+        .linha-ass { border-top: 1.2px solid #000; width: 85%; margin: 0 auto 1px; }
+        .label-ass { font-size: 7px; margin-bottom: 4px; }
+        .espaco-carimbo { height: 48px; } /* Espaço para o carimbo físico */
+
+        .btn { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin: 3px; color: white; font-size: 12px; }
+        .btn-del { background: #ff4444; color: white; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-weight: bold; position: absolute; top: -5px; right: -5px; z-index: 10; font-size: 10px; }
+        .controles-extra { margin-top: 10px; display: flex; justify-content: center; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px; border-top: 1px solid #eee; }
+        select, .search-input { padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+        .checkbox-print { transform: scale(1.5); cursor: pointer; margin-right: 5px; }
+
+        @media print { 
+            .no-print, .btn-del, .checkbox-print, .divisor-turma { display: none !important; } 
+            body { background: white; padding: 0; } 
+            .container { padding: 0; gap: 0; width: 210mm; display: flex; justify-content: center; }
+            .carteira-wrapper { border: none; border-bottom: 1px dashed #bbb; padding: 3mm 0; width: 100%; justify-content: center; margin-bottom: 0; height: 72mm; }
+            .carteira-dupla::after { display: block; } 
+            .carteira-wrapper:not(.selected-for-print) { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="no-print">
+    <h2>Sistema EMEF Hildegarda - Gestão Escolar</h2>
+    
+    <div class="admin-box">
+        <div><label>Nome:</label><input type="text" id="m_nome" placeholder="NOME COMPLETO"></div>
+        <div><label>Nascimento:</label><input type="text" id="m_nasc" placeholder="00/00/0000"></div>
+        <div><label>Turma:</label><input type="text" id="m_turma" placeholder="1º ANO AM"></div>
+        <div><label>Ano:</label><input type="text" id="m_ano" value="2026"></div>
+        <div><label>Obs:</label><input type="text" id="m_obs" placeholder="OPCIONAL"></div>
+        <button class="btn-add" onclick="addAlunoManual()">➕ Adicionar</button>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #ddd; display: inline-block;">
+        <button class="btn" style="background: #6c757d;" onclick="downloadModeloCSV()">📄 Baixar Modelo CSV</button>
+        <label style="margin-left: 10px;">Brasão: </label><input type="file" accept="image/*" onchange="upBrasao(this)">
+        <label style="margin-left: 15px;">Importar CSV: </label><input type="file" accept=".csv" onchange="upCSV(this)">
+    </div>
+    
+    <div class="controles-extra">
+        <input type="text" id="buscaNome" class="search-input" placeholder="🔍 Buscar aluno..." oninput="render()">
+        <select id="filtroTurma" onchange="render()"><option value="TODAS">TODAS AS TURMAS</option></select>
+        <button class="btn" style="background: #0047ab;" onclick="render()">🔄 Sincronizar</button>
+        <button class="btn" style="background: #28a745;" onclick="imprimirMobile()">🖨️ Imprimir Selecionados</button>
+        <button class="btn" style="background: #dc3545;" onclick="limpar()">🗑️ Limpar Nuvem</button>
+    </div>
+    
+    <div style="margin-top: 10px; padding: 10px; border-top: 1px solid #eee;">
+        <button class="btn" style="background: #555;" onclick="selecionarTudo(true)">✅ Marcar Todos</button>
+        <button class="btn" style="background: #555;" onclick="selecionarTudo(false)">❌ Desmarcar Todos</button>
+    </div>
+</div>
+
+<div id="lista" class="container"></div>
+
+<script>
+    const SUPABASE_URL = 'https://vfzrwnghcrgbbisezxlj.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmenJ3bmdoY3JnYmJpc2V6eGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4ODQ1NjQsImV4cCI6MjA4NTQ2MDU2NH0.zyolm3mhY20wlLx8dyQ_y9hAiH42nZjhSizNpy6ynXs';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let bImg = localStorage.getItem('brasao_v6') || "";
+    let alunosCarregados = [];
+
+    function imprimirMobile() {
+        const selecionados = document.querySelectorAll('.selected-for-print').length;
+        if(selecionados === 0) return alert("Selecione alunos primeiro!");
+        setTimeout(() => { window.print(); }, 500);
+    }
+
+    async function addAlunoManual() {
+        const nome = document.getElementById('m_nome').value.trim().toUpperCase();
+        const nasc = document.getElementById('m_nasc').value.trim();
+        const turma = document.getElementById('m_turma').value.trim().toUpperCase();
+        const ano = document.getElementById('m_ano').value.trim();
+        const obs = document.getElementById('m_obs').value.trim().toUpperCase();
+        if(!nome || !turma) return alert("Nome e Turma são obrigatórios!");
+        await supabaseClient.from('alunos').insert([{ nome, nasc, turma, ano, obs }]);
+        document.getElementById('m_nome').value = ""; render();
+    }
+
+    function downloadModeloCSV() {
+        const csvContent = "NOME;NASCIMENTO;TURMA;ANO;OBSERVACOES\nANA PAULA SILVA;15/02/2015;1º ANO AM;2026;ALERGIA A CORANTES";
+        saveAs(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }), "modelo_alunos_hildegarda.csv");
+    }
+
+    async function render() {
+        const list = document.getElementById('lista');
+        const filtroTurma = document.getElementById('filtroTurma').value;
+        const termoBusca = document.getElementById('buscaNome').value.toLowerCase();
+        list.innerHTML = "<h3 style='text-align:center; width:100%'>Sincronizando...</h3>";
+
+        const { data: todos } = await supabaseClient.from('alunos').select('*').order('nome');
+        alunosCarregados = todos;
+
+        const turmasUnicas = [...new Set(todos.map(a => a.turma))].sort();
+        const selectTurma = document.getElementById('filtroTurma');
+        const valAtual = selectTurma.value;
+        selectTurma.innerHTML = '<option value="TODAS">TODAS AS TURMAS</option>';
+        turmasUnicas.forEach(t => selectTurma.innerHTML += `<option value="${t}">${t}</option>`);
+        selectTurma.value = valAtual;
+
+        let exibir = todos.filter(a => a.nome.toLowerCase().includes(termoBusca) && (filtroTurma === "TODAS" || a.turma === filtroTurma));
+        list.innerHTML = "";
+        
+        const turmasExibicao = [...new Set(exibir.map(a => a.turma))].sort();
+        turmasExibicao.forEach(t => {
+            if (!termoBusca) list.innerHTML += `<div class="divisor-turma">TURMA: ${t}</div>`;
+            exibir.filter(a => a.turma === t).forEach(a => {
+                list.innerHTML += `
+                <div class="carteira-wrapper" id="wrap-${a.id}">
+                    <input type="checkbox" class="checkbox-print" onchange="toggleSelect('${a.id}', this)">
+                    <button class="btn-del" onclick="deletarAluno('${a.id}', '${a.nome}')">X</button>
+                    <div class="carteira-dupla">
+                        <div class="face">
+                            <div class="atencao-box">
+                                — Atenção: —<br>
+                                Conforme Medida Provisória n° 2208, de 17 de agosto de 2001. O portador desta carteira terá como direito pessoal e intransferível.
+                            </div>
+                            <div class="assinaturas-v">
+                                <div>
+                                    <div class="linha-ass"></div>
+                                    <div class="label-ass">Assinatura do(a) Aluno(a)</div>
+                                </div>
+                                <div class="espaco-carimbo"></div>
+                                <div>
+                                    <div class="linha-ass"></div>
+                                    <div class="label-ass">Diretor(a)/Secretário(a)</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="face">
+                            <div class="topo">
+                                <img src="${bImg}" class="brasao" style="${bImg ? '' : 'display:none'}">
+                                <div class="header-txt">Prefeitura Municipal de Ananindeua<br>Secretaria Municipal de Educação<br>EMEF HILDEGARDA CALDAS DE MIRANDA</div>
+                            </div>
+                            <div class="titulo-central">Carteira de Estudante</div>
+                            <div class="corpo-frente">
+                                <div class="dados-col">
+                                    <div class="campo"><span class="label">Nome:</span>${a.nome}</div>
+                                    <div class="linha-dados">
+                                        <div class="campo centro" style="flex:1.4"><span class="label">Nasc:</span>${a.nasc || ''}</div>
+                                        <div class="campo centro" style="flex:1.2"><span class="label">Turma:</span>${a.turma || ''}</div>
+                                        <div class="campo centro" style="flex:0.8"><span class="label">Ano:</span>${a.ano || ''}</div>
+                                    </div>
+                                    <div class="campo obs-box"><span class="label">Obs:</span>${a.obs || ''}</div>
+                                </div>
+                                <div class="foto-box" onclick="document.getElementById('f-${a.id}').click()">
+                                    ${a.foto ? `<img src="${a.foto}">` : 'FOTO 3X4'}
+                                    <input type="file" id="f-${a.id}" hidden accept="image/*" capture="environment" onchange="saveFoto('${a.id}', this)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+        });
+    }
+
+    function toggleSelect(id, cb) { document.getElementById('wrap-' + id).classList.toggle('selected-for-print', cb.checked); }
+    function selecionarTudo(status) { document.querySelectorAll('.checkbox-print').forEach(cb => { cb.checked = status; cb.dispatchEvent(new Event('change')); }); }
+    async function deletarAluno(id, nome) { if(confirm(`Excluir permanentemente ${nome}?`)) { await supabaseClient.from('alunos').delete().eq('id', id); render(); } }
+    async function limpar() { if(confirm("Apagar todos os registros da nuvem?")) { await supabaseClient.from('alunos').delete().neq('nome', ''); render(); } }
+
+    async function saveFoto(id, input) {
+        if (!input.files[0]) return;
+        const reader = new FileReader();
+        reader.readAsDataURL(input.files[0]);
+        reader.onload = async (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = async () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 300; canvas.height = 400;
+                canvas.getContext('2d').drawImage(img, 0, 0, 300, 400);
+                await supabaseClient.from('alunos').update({ foto: canvas.toDataURL('image/jpeg', 0.7) }).eq('id', id);
+                render();
+            };
+        };
+    }
+
+    async function upCSV(i) {
+        const r = new FileReader();
+        r.readAsText(i.files[0], 'Windows-1252');
+        r.onload = async e => {
+            const lines = e.target.result.split(/\r?\n/).slice(1);
+            const novos = lines.filter(l => l.trim()).map(line => {
+                const c = line.includes(';') ? line.split(';') : line.split(',');
+                return { nome: c[0]?.trim().toUpperCase(), nasc: c[1]?.trim(), turma: c[2]?.trim().toUpperCase(), ano: c[3]?.trim(), obs: c[4]?.trim() };
+            });
+            await supabaseClient.from('alunos').insert(novos);
+            render();
+        };
+    }
+
+    function upBrasao(i) {
+        const r = new FileReader();
+        r.onload = e => { bImg = e.target.result; localStorage.setItem('brasao_v6', bImg); render(); };
+        r.readAsDataURL(i.files[0]);
+    }
+
+    render();
+</script>
+</body>
+</html>
